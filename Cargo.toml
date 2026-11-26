@@ -1,0 +1,31 @@
+[package]
+name = "heating-bot"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "heating-bot"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.7", default-features = false, features = ["http1", "tokio"] }
+mxbot-common = { git = "https://github.com/PolynomialDivision/mxbot-common" }
+regex = "1"
+rumqttd = { version = "0.20", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+subtle = "2"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+
+[dev-dependencies]
+http-body-util = "0.1"
+rumqttc = { version = "0.25", default-features = false }
+toml = "0.8"
+tower = { version = "0.5", features = ["util"] }
+
+# A panic anywhere ends the bot and Docker restarts it, as a supervised task
+# that ends does (mxbot_common::supervise).
+[profile.release]
+panic = "abort"

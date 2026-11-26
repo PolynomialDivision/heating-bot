@@ -1,0 +1,130 @@
+# heating-bot: Home Assistant → HTTP POST (or MQTT) → encrypted Matrix group chat.
+#
+# Home Assistant posts to the bot's HTTP endpoint (configuration.yaml):
+#
+#   rest_command:
+#     heating_notify:
+#       url: http://UNRAID-IP:8765/message
+#       method: POST
+#       content_type: application/json
+#       payload: '{{ {"message": message} | to_json }}'
+#
+#   action: rest_command.heating_notify
+#   data:
+#     message: Heizung wurde eingeschaltet.
+#
+# Test it with:
+#   curl -d '{"message": "Test"}' http://UNRAID-IP:8765/message
+#
+# The body is either JSON with "message" (and optional "title"), or any
+# plain text. **bold**, [label](url), line breaks and @user:server mentions
+# are rendered in Matrix.
+
+[http]
+# On by default. Plain HTTP. Keep it on your internal network.
+enabled = true
+listen = "0.0.0.0:8765"
+# Optional: require "Authorization: Bearer <token>" (at least 24 characters,
+# e.g. openssl rand -hex 32; may come from HTTP_TOKEN). Without a token
+# anyone who can reach the port can post.
+# token = ""
+# Largest accepted request body, in bytes.
+max_body_bytes = 65536
+
+[mqtt]
+# Built-in MQTT broker as an alternative way in; off by default.
+# When enabled, Home Assistant's MQTT integration connects to this host
+# (port 1883, protocol 3.1.1, the credentials below) and sends with:
+#
+#   action: mqtt.publish
+#   data:
+#     topic: heating/notify
+#     payload: '{"title": "Heizung", "message": "Wohnzimmer unter 18 °C"}'
+enabled = false
+# Where the broker listens (plain TCP, keep it on your LAN).
+listen = "0.0.0.0:1883"
+# Credentials Home Assistant must use. Required when enabled; the password
+# needs at least 12 characters and may come from MQTT_PASSWORD instead.
+username = "homeassistant"
+password = "CHANGE-ME-long-random-secret"
+# Topic filters whose messages are posted (+ and # wildcards allowed).
+topics = ["heating/#"]
+# Largest accepted message, in bytes.
+max_payload_bytes = 65536
+
+[heating]
+# The (encrypted) group chat to post into. Invite the bot there first.
+room_id = "!YOUR_ROOM_ID:matrix.org"
+# Prefix each MQTT message with its topic.
+show_topic = false
+
+# One message per place: a new message about a place (read from the text)
+# deletes the one before about it, so the chat shows how each place is now.
+# Everyone still gets notified, because the new one is a new message. The
+# all-clear ("now closed") is deleted by itself after resolved_minutes.
+# Messages that don't match key_pattern are posted as before.
+[heating.replace]
+enabled = true
+# The place is the first capture group: "In the 2nd floor bathroom a window
+# or door is open" and "In the 2nd floor bathroom the windows and door are
+# now closed" both give "2nd floor bathroom".
+key_pattern = '(?i)\bin the (.+?) (?:a|the) (?:window|door)'
+# A message saying the place is fine again.
+resolved_pattern = '(?i)\bnow closed\b'
+# Delete it after this many minutes (0: keep it until the next message
+# about the place).
+resolved_minutes = 30
+
+[matrix]
+homeserver = "https://matrix.org"
+user_id = "@heating-bot:matrix.org"
+# Secrets may instead come from MATRIX_ACCESS_TOKEN / MATRIX_RECOVERY_KEY.
+access_token = "syt_YOUR_ACCESS_TOKEN"
+device_id = "YOUR_DEVICE_ID"
+# Optional: security key from Element's "Set up Secure Backup". Lets the bot
+# restore its cross-signing keys so it can verify (and be verified by) you.
+# recovery_key = "EsXX xxxx xxxx xxxx xxxx xxxx xxxx xxxx"
+
+[security]
+# Users allowed to invite the bot ("all" = anyone, [] = nobody).
+# Configured admins may always open a direct chat with the bot.
+allowed_inviters = ["@you:matrix.org"]
+# Rooms the bot may join: room IDs, [] for none, or "all" for every room.
+# Required: without it the bot refuses to start.
+allowed_rooms = ["!REPLACE_ME:example.org"]
+# Members of these rooms may also open a private chat with the bot.
+# dm_rooms = ["!REPLACE_ME:example.org"]
+
+# Users allowed to run admin commands, privately in a
+# direct chat with the bot (send !admin there for help, !heating status for
+# the MQTT broker / HTTP endpoint).
+admin_users = ["@you:matrix.org"]
+
+# Which devices receive room keys:
+#   identity_based: only cross-signed devices (default, recommended)
+#   only_trusted: only explicitly verified devices
+#   all_devices: all devices, no restriction
+encryption_strategy = "identity_based"
+
+[security.verification]
+# Users allowed to complete first-time verification. If omitted or empty,
+# an explicit allowed_inviters list is used as the fallback. Admins are
+# always allowed.
+allowed_users = ["@you:matrix.org"]
+# Also allow first-time verification for users sharing a joined room with the bot.
+allow_users_from_joined_rooms = false
+# SAS-only verification limits.
+flow_timeout_secs = 300
+grant_ttl_secs = 600
+max_concurrent = 8
+
+[security.admin_dm]
+# Admins can open a direct chat with the bot and manage it there:
+#   !admin status | verify | settings | set <key> <value> | unset <key>
+# `!admin verify` starts mutual emoji (SAS) verification with you.
+enabled = true
+# Only accept admin commands in end-to-end encrypted direct chats.
+require_encryption = true
+# Only accept admin commands from devices the bot has verified (recommended
+# once you and the bot have verified each other).
+require_verified_device = false
